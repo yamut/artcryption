@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="960c2fc4-d4a7-4aa4-aaa6-c633e21e463c" name="art.danmattern.com" url="http://art.danmattern.com">
+        <fileTransfer host="art.danmattern.com" port="22" rootFolder="/var/www/art.danmattern.com" accessType="SFTP">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" />
+          </advancedOptions>
+          <option name="port" value="22" />
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

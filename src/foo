@@ -1,0 +1,7 @@
+<?php
+
+include 'Artcryption.php';
+
+echo filesize('cat.jpg')."||\n";
+
+$a = new Artcryption('cat.jpg','bar.png');
