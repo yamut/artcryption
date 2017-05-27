@@ -21,9 +21,11 @@ class Artcryption {
 	/**
 	 * Artcryption constructor.
 	 * @param string $inFileName
+	 * @param string $outFileName
+	 * @param int $direction
 	 * @throws Exception
 	 */
-	public function __construct( string $inFileName, string $outFileName, $direction = self::DIRECTION[ 'ENCODE' ] ) {
+	public function __construct( string $inFileName, string $outFileName, int $direction = 0 ) {
 		$this->setInFileName( $inFileName );
 		$this->setOutFileName( $outFileName );
 		if ( in_array( $direction, self::DIRECTION ) ) {
@@ -37,13 +39,13 @@ class Artcryption {
 			$this->fileSize = 0;
 		}
 		$this->calculateXY();
-		if ( $direction == 'ENCODE' ) {
+		if ( $direction == self::DIRECTION[ 'ENCODE' ] ) {
 			$this->inFileHandle = new SplFileObject( $this->inFileName, 'rb' );
 			$this->outFileName = $outFileName;
 			$this->createImageHandle();
 			$this->executeEncode();
 			$this->saveImage();
-		} else if ( $direction == 'DECODE' ) {
+		} else if ( $direction == self::DIRECTION[ 'DECODE' ] ) {
 			$this->inFileHandle = new Imagine();
 			$this->image = $this->inFileHandle->open( $this->inFileName );
 			$this->outFileHandle = new SplFileObject( $this->outFileName, 'w' );
@@ -51,7 +53,7 @@ class Artcryption {
 			$this->image->usePalette( new RGB() );
 			$this->width = $size->getWidth();
 			$this->height = $size->getHeight();
-
+			$this->executeDecode();
 		}
 	}
 
@@ -62,6 +64,7 @@ class Artcryption {
 	protected function getNextByte() {
 		if ( !$this->inFileHandle->eof() ) {
 			$return = $this->inFileHandle->fread( 1 );
+			echo bin2hex( $return ) . "\n";
 			return $return;
 		}
 		return false;
@@ -151,32 +154,50 @@ class Artcryption {
 		$nibbles = [ 0 => null, 1 => null ];
 		$alpha_packet = null;
 		$time_to_write_alpha = false;
-		$buffer = [];
 		for ( $h = 0; $h < $this->height; $h++ ) {
 			for ( $w = 0; $w < $this->width; $w++ ) {
 				/**
 				 * @var $pixel \Imagine\Image\Palette\Color\RGB
 				 */
 				$pixel = $this->image->getColorAt( new Point( $w, $h ) );
-				$alpha = $pixel->getAlpha();
+				//$alpha = $pixel->getAlpha();
+
 				$red = $pixel->getRed();
 				$green = $pixel->getGreen();
 				$blue = $pixel->getBlue();
-				if ( $nibbles[ 0 ] == null && $nibbles[ 1 ] == null ) {
-					$nibbles[ 0 ] = 52 - $alpha;
+				//die( var_dump( [ 'red' => $red, 'green' => $green, 'blue' => $blue ] ) );
+				/*if ( $nibbles[ 0 ] == null && $nibbles[ 1 ] == null ) {
+					$nibbles[ 0 ] = dechex( 50 - $alpha );
 				} else if ( $nibbles[ 0 ] != null && $nibbles[ 1 ] == null ) {
-					$nibbles[ 1 ] = 52 - $alpha;
+					$nibbles[ 1 ] = dechex( 50 - $alpha );
 					$alpha_packet = $nibbles[ 0 ] . $nibbles[ 1 ];
 					$time_to_write_alpha = !$time_to_write_alpha;
 					$nibbles = [ 0 => null, 1 => null ];
 				}
-				if ( !$time_to_write_alpha ) {
+				if ( $alpha_packet != null ) {
+					//var_dump( $alpha_packet );
+					//echo dechex( $alpha_packet ) . "\n";
+				}*/
+				//echo dechex( $red ) . "\n";
+				//echo dechex( $green ) . "\n";
+				//echo dechex( $blue ) . "\n";
+				//var_dump(dechex($red),dechex($green),dechex($blue));
+				$red = hex2bin( str_pad( dechex( $red ), 2, '0', STR_PAD_LEFT ) );
+				$green = hex2bin( str_pad( dechex( $green ), 2, '0', STR_PAD_LEFT ) );
+				$blue = hex2bin( str_pad( dechex( $blue ), 2, '0', STR_PAD_LEFT ) );
 
+				if ( !$time_to_write_alpha || true ) {
+					$this->outBuffer .= $red . $green . $blue;
 				} else {
-
+					//need to first write the nibbles, then continue
+					$joined_byte = hex2bin( $alpha_packet );
+					$alpha_packet = null;
+					$this->outBuffer .= $joined_byte . $red . $green . $blue;
+					$time_to_write_alpha = !$time_to_write_alpha;
 				}
 			}
 		}
+		$this->outFileHandle->fwrite( $this->outBuffer );
 	}
 
 	protected function executeEncode() {
@@ -192,12 +213,14 @@ class Artcryption {
 						$bytes[ $b ] = 0;
 					}
 				}
-				if ( !$this->isEof() ) {
+				/*if ( !$this->isEof() ) {
 					if ( $nibbles[ 0 ] == null && $nibbles[ 1 ] == null ) {
 						//get two new nibbles
 						$_byte = $this->getNextByte();
-						$_byte = str_pad( decbin( ord( $_byte ) ), 8, 0, STR_PAD_LEFT );
-						$nibbles = [ 0 => substr( $_byte, 0, 4 ), 1 => substr( $_byte, -4 ) ];
+						$_byte = bin2hex( $_byte );
+						//var_dump( $_byte );
+						$nibbles = [ 0 => substr( $_byte, 0, 1 ), 1 => substr( $_byte, -1 ) ];
+						var_dump( $nibbles );
 						$alpha = $nibbles[ 0 ];
 						$nibbles[ 0 ] = null;
 					} else if ( $nibbles[ 0 ] == null ) {
@@ -207,8 +230,8 @@ class Artcryption {
 				} else {
 					//adjust this for some scenarios
 					$alpha = 0;
-				}
-				$this->image->draw()->dot( new Point( $w, $h ), $this->encodeToColor( $bytes[ 0 ], $bytes[ 1 ], $bytes[ 2 ], $alpha ) );
+				}*/
+				$this->image->draw()->dot( new Point( $w, $h ), $this->encodeToColor( $bytes[ 0 ], $bytes[ 1 ], $bytes[ 2 ], 100 ) );
 			}
 		}
 
@@ -231,8 +254,9 @@ class Artcryption {
 		$byte1 = hexdec( bin2hex( $byte1 ) );
 		$byte2 = hexdec( bin2hex( $byte2 ) );
 		$byte3 = hexdec( bin2hex( $byte3 ) );
-
-		$byte4 = 100 - 48 - bindec( $byte4 );
+		//echo "Hex: " . $byte4 . ", Dec: " . hexdec( $byte4 ) . "\n";
+		$byte4 = 100;//50 - hexdec( $byte4 );
+		//var_dump( $byte4 );
 
 		$palette = new RGB();
 		return $palette->color( [ $byte1, $byte2, $byte3 ], $byte4 );
@@ -259,6 +283,10 @@ class Artcryption {
 		//filesize+1, because if filesize/4%2==0 then there is no space for the terminator pixel
 		//TODO-determine if I could drop the terminator pixel if the value of that equation is modulo 0
 		$this->width = $this->height = ceil( sqrt( ( $this->fileSize + 1 ) / 3 ) );
+	}
+
+	protected function base64File(){
+		$this->inBuffer='';
 	}
 }
 
