@@ -1,309 +1,261 @@
 <?php
-//echo ".." . $_SERVER[ 'DOCUMENT_ROOT' ] . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php';
-require_once( ".." . $_SERVER[ 'DOCUMENT_ROOT' ] . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php' );
+require_once( ".." . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php' );
 use Imagine\Gd\Imagine, Imagine\Image\Box, Imagine\Image\Palette\RGB, Imagine\Image\ImageInterface, Imagine\Image\Point;
 
 class Artcryption {
-	const DIRECTION = [ 'ENCODE' => 0, 'DECODE' => 1 ];
+
+	const DECODE = 0;
+	const ENCODE = 1;
+	const DECODE_ARG = ' --decode ';
+	/**
+	 * This filename needs to be stripped of anything dangerous before coming in
+	 * Only alphanumeric chars, _, and . allowed
+	 * @var string
+	 */
 	protected $inFileName;
 	protected $outFileName;
-	protected $inFileHandle;
-	protected $outFileHandle;
 	protected $inBuffer;
 	protected $outBuffer;
-	protected $width = 0;
-	protected $height = 0;
-	protected $imageHandle;
-	protected $fileSize = 0;
+	protected $outTempFile;
+	/**
+	 * @var SplFileObject
+	 */
+	protected $inFileHandle;
+
+	/**
+	 * @var Imagine
+	 */
+	protected $inImageHandle;
+
+	/**
+	 * @var SplFileObject
+	 */
+	protected $outFileHandle;
+
+	/**
+	 * @var Imagine
+	 */
+	protected $outImageHandle;
+
+	/**
+	 * @var ImageInterface
+	 */
 	protected $image;
+
+	/**
+	 * @var array
+	 */
+	protected $masterMap = [];
+
+	/**
+	 * @var array
+	 */
+	protected $customMap = [];
+
+	/**
+	 * @var bool
+	 */
+	protected $applyCustomMap = false;
+
+	/**
+	 * @var string
+	 */
+	protected $storageLocation;
+
+	/**
+	 * @var int
+	 */
+	protected $sideLength;
+
+	/**
+	 * @var int
+	 */
 	protected $direction;
 
-	/**
-	 * Artcryption constructor.
-	 * @param string $inFileName
-	 * @param string $outFileName
-	 * @param int $direction
-	 * @throws Exception
-	 */
-	public function __construct( string $inFileName, string $outFileName, int $direction = 0 ) {
-		$this->setInFileName( $inFileName );
-		$this->setOutFileName( $outFileName );
-		if ( in_array( $direction, self::DIRECTION ) ) {
-			$this->direction = $direction;
-		} else {
-			throw new Exception( "Invalid direction: " . $direction );
-		}
-		if ( file_exists( $inFileName ) ) {
-			$this->fileSize = filesize( $inFileName );
-		} else {
-			$this->fileSize = 0;
-		}
-		$this->calculateXY();
-		if ( $direction == self::DIRECTION[ 'ENCODE' ] ) {
-			$this->inFileHandle = new SplFileObject( $this->inFileName, 'rb' );
-			$this->outFileName = $outFileName;
-			$this->createImageHandle();
-			$this->executeEncode();
-			$this->saveImage();
-		} else if ( $direction == self::DIRECTION[ 'DECODE' ] ) {
-			$this->inFileHandle = new Imagine();
-			$this->image = $this->inFileHandle->open( $this->inFileName );
-			$this->outFileHandle = new SplFileObject( $this->outFileName, 'w' );
-			$size = $this->image->getSize();
-			$this->image->usePalette( new RGB() );
-			$this->width = $size->getWidth();
-			$this->height = $size->getHeight();
-			$this->executeDecode();
+	public function __construct( string $inFileName, string $outFileName, int $direction = self::ENCODE, string $storageLocation = DIRECTORY_SEPARATOR . 'tmp' . DIRECTORY_SEPARATOR ) {
+		$this->inFileName      = $inFileName;
+		$this->outFileName     = $outFileName;
+		$this->storageLocation = $storageLocation;
+		$this->direction       = $direction;
+		switch ( $this->direction ) {
+			case self::ENCODE:
+				$this->executeEncodeFile( $this->inFileName );
+				break;
+			case self::DECODE:
+				$this->executeDecodeFile();
+				break;
 		}
 	}
 
 	/**
-	 * Get the next byte from the input file if there is one
-	 * @return bool|string
+	 * @param string $fileName
+	 * @param string $mode
+	 * @param string $isBinary - should not be needed in this context
+	 *
+	 * @return SplFileObject
 	 */
-	protected function getNextByte() {
-		if ( !$this->inFileHandle->eof() ) {
-			$return = $this->inFileHandle->fread( 1 );
-			echo bin2hex( $return ) . "\n";
-			return $return;
+	protected function openFile( string $fileName, string $mode = 'r', $isBinary = '' ): SplFileObject {
+		return new SplFileObject( $fileName, $mode . $isBinary );
+	}
+
+	/**
+	 * Get the size of the file in the handle
+	 *
+	 * @param SplFileObject $handle
+	 *
+	 * @return int
+	 */
+	protected function getFileSize( SplFileObject $handle ): int {
+		return $handle->getSize();
+	}
+
+	/**
+	 * return the size of one side of the square
+	 *
+	 * @param int $fileSize
+	 * @param int $basis - number of data points to be used per pixel
+	 *
+	 * @return int
+	 */
+	protected function calculateSideLength( int $fileSize, int $basis = 3 ): int {
+		return ceil( sqrt( ceil( $fileSize / $basis ) ) );
+	}
+
+
+	public function executeEncodeFile( $filename ) {
+		//Final checks
+		if ( !file_exists( $this->storageLocation . $filename ) || !is_readable( $this->storageLocation . $filename ) ) {
+			throw new Exception( "File does not exist or is not readable." );
 		}
-		return false;
+
+		$new_filename       = $this->externalBase64File( $filename );
+		$this->inFileHandle = $this->openFile( $new_filename );
+		$this->sideLength   = $this->calculateSideLength( $this->getFileSize( $this->inFileHandle ) );
+
+		$this->outImageHandle = new Imagine();
+		$this->image          = $this->outImageHandle->create( new Box( $this->sideLength, $this->sideLength ) );
+		$this->executePixelLoop( $this->sideLength );
+		$this->image->save( $this->storageLocation . $this->outFileName );
+
+		//As expected, converting to webp drops the file size
+		//Interestingly, converting back to png does not lose any color data but does compress the file further
+		//Even more interestingly, this reduces the file size of the encoded file to less than the original file (Very few test cases to support this)
+		//Requires the cwebp and dwebp commands to be available on linux. In ubuntu, apt-get install webp will get what you need
+		//Without lossless, the jpg problem persists
+		// It appears this reduction in size may be due to it converting from 32 bit color to 24 bit color
+
+		//@TODO: would like to know how it is possible to take a binary file, represent it as 8/6th of its bytes, and end up with a smaller size. Image compression magic?
+
+		//On further research this is a library 'bug?' that causes it. It always saves the alpha channel for a png, even if you don't use it
+		//and there is no way to disable that. Thinking the below solution, while messy, will work in the short term.
+
+		//If possible it may be worth storing a bit in alpha, but this library forces the alpha to be an int representation of a percentage
+		//between 0 and 100. Based on the PNG specification I think it may actually be stored in a full byte which would enable this and further decrease
+		//the end file size, by 1/4th the size of the output of the base64 output(4 per px rather than 3 per px)
+
+		//`cwebp -lossless -q 100 $this->storageLocation$this->outFileName -o $this->storageLocation$this->outFileName.webp`;
+		//`dwebp $this->storageLocation$this->outFileName.webp -o $this->storageLocation$this->outFileName.webp.png`;
 	}
 
-	protected function putNextByte( $byte ) {
+	protected function executePixelLoop( $size ) {
+		for ( $h = 0; $h < $size; $h++ ) {
+			for ( $w = 0; $w < $size; $w++ ) {
+				if ( $this->direction === self::ENCODE ) {
+					$to_pick     = 3;
+					$color_array = [];
+					//@TODO: determine whether to use alpha, if so refactor this
+					for ( $i = 0; $i < $to_pick; $i++ ) {
+						$color_array[ $i ] = ( !$this->inFileHandle->eof() ) ? ord( $this->inFileHandle->fread( 1 ) ) : 0;
+					}
+					$color = new \Imagine\Image\Palette\Color\RGB( new RGB(), $color_array, 100 );
+					//$color->color( $color_array );
+					$this->image->draw()->dot( new Point( $h, $w ), $color );
+				} else if ( $this->direction === self::DECODE ) {
 
-	}
-
-	/**
-	 * Is the file at the end
-	 * @return bool
-	 */
-	protected function isEof(): bool {
-		return $this->inFileHandle->eof();
-	}
-
-	/**
-	 * @return mixed
-	 */
-	public function getWidth() {
-		return $this->width;
-	}
-
-	/**
-	 * @param mixed $width
-	 */
-	public function setWidth( $width ) {
-		$this->width = $width;
-	}
-
-	/**
-	 * @return mixed
-	 */
-	public function getHeight() {
-		return $this->height;
-	}
-
-	/**
-	 * @param mixed $height
-	 */
-	public function setHeight( $height ) {
-		$this->height = $height;
-	}
-
-	/**
-	 * @return mixed
-	 */
-	public function getInFileName() {
-		return $this->inFileName;
-	}
-
-	/**
-	 * @param mixed $inFileName
-	 */
-	public function setInFileName( $inFileName ) {
-		$this->inFileName = $inFileName;
-	}
-
-	/**
-	 * @return mixed
-	 */
-	public function getOutFileName() {
-		return $this->outFileName;
-	}
-
-	/**
-	 * @param mixed $outFileName
-	 */
-	public function setOutFileName( $outFileName ) {
-		$this->outFileName = $outFileName;
-	}
-
-	/**
-	 * @throws Exception
-	 */
-	protected function createImageHandle() {
-		if ( $this->width == 0 || $this->height == 0 ) {
-			throw new Exception( "Image size is not valid: X: " . $this->width . " Y:" . $this->height );
-		}
-		$this->imageHandle = new Imagine();
-		$this->image = $this->imageHandle->create( new Box( $this->width, $this->height ) );
-
-	}
-
-	protected function executeDecode() {
-		$nibbles = [ 0 => null, 1 => null ];
-		$alpha_packet = null;
-		$time_to_write_alpha = false;
-		for ( $h = 0; $h < $this->height; $h++ ) {
-			for ( $w = 0; $w < $this->width; $w++ ) {
-				/**
-				 * @var $pixel \Imagine\Image\Palette\Color\RGB
-				 */
-				$pixel = $this->image->getColorAt( new Point( $w, $h ) );
-				//$alpha = $pixel->getAlpha();
-
-				$red = $pixel->getRed();
-				$green = $pixel->getGreen();
-				$blue = $pixel->getBlue();
-				//die( var_dump( [ 'red' => $red, 'green' => $green, 'blue' => $blue ] ) );
-				/*if ( $nibbles[ 0 ] == null && $nibbles[ 1 ] == null ) {
-					$nibbles[ 0 ] = dechex( 50 - $alpha );
-				} else if ( $nibbles[ 0 ] != null && $nibbles[ 1 ] == null ) {
-					$nibbles[ 1 ] = dechex( 50 - $alpha );
-					$alpha_packet = $nibbles[ 0 ] . $nibbles[ 1 ];
-					$time_to_write_alpha = !$time_to_write_alpha;
-					$nibbles = [ 0 => null, 1 => null ];
-				}
-				if ( $alpha_packet != null ) {
-					//var_dump( $alpha_packet );
-					//echo dechex( $alpha_packet ) . "\n";
-				}*/
-				//echo dechex( $red ) . "\n";
-				//echo dechex( $green ) . "\n";
-				//echo dechex( $blue ) . "\n";
-				//var_dump(dechex($red),dechex($green),dechex($blue));
-				$red = hex2bin( str_pad( dechex( $red ), 2, '0', STR_PAD_LEFT ) );
-				$green = hex2bin( str_pad( dechex( $green ), 2, '0', STR_PAD_LEFT ) );
-				$blue = hex2bin( str_pad( dechex( $blue ), 2, '0', STR_PAD_LEFT ) );
-
-				if ( !$time_to_write_alpha || true ) {
-					$this->outBuffer .= $red . $green . $blue;
-				} else {
-					//need to first write the nibbles, then continue
-					$joined_byte = hex2bin( $alpha_packet );
-					$alpha_packet = null;
-					$this->outBuffer .= $joined_byte . $red . $green . $blue;
-					$time_to_write_alpha = !$time_to_write_alpha;
-				}
-			}
-		}
-		$this->outFileHandle->fwrite( $this->outBuffer );
-	}
-
-	protected function executeEncode() {
-		$nibbles = [ 0 => null, 1 => null ];
-		for ( $h = 0; $h < $this->height; $h++ ) {
-			for ( $w = 0; $w < $this->width; $w++ ) {
-				//draw one pixel
-				$bytes = [];
-				for ( $b = 0; $b < 3; $b++ ) {
-					if ( !$this->isEof() ) {
-						$bytes[ $b ] = $this->getNextByte();
+					/**
+					 * @var $color \Imagine\Image\Palette\Color\RGB
+					 */
+					$color = $this->image->getColorAt( new Point( $h, $w ) );
+					$red   = $color->getRed();
+					$green = $color->getGreen();
+					$blue  = $color->getBlue();
+					//Test for termination
+					if ( $red === 0 ) {
+						return;
+					} else if ( $green === 0 ) {
+						$this->outBuffer .= chr( $red );
+						return;
+					} else if ( $blue === 0 ) {
+						$this->outBuffer .= chr( $red ) . chr( $green );
+						return;
 					} else {
-						$bytes[ $b ] = 0;
-					}
-				}
-				/*if ( !$this->isEof() ) {
-					if ( $nibbles[ 0 ] == null && $nibbles[ 1 ] == null ) {
-						//get two new nibbles
-						$_byte = $this->getNextByte();
-						$_byte = bin2hex( $_byte );
-						//var_dump( $_byte );
-						$nibbles = [ 0 => substr( $_byte, 0, 1 ), 1 => substr( $_byte, -1 ) ];
-						var_dump( $nibbles );
-						$alpha = $nibbles[ 0 ];
-						$nibbles[ 0 ] = null;
-					} else if ( $nibbles[ 0 ] == null ) {
-						$alpha = $nibbles[ 1 ];
-						$nibbles[ 1 ] = null;
+						$this->outBuffer .= chr( $red ) . chr( $green ) . chr( $blue );
 					}
 				} else {
-					//adjust this for some scenarios
-					$alpha = 0;
-				}*/
-				$this->image->draw()->dot( new Point( $w, $h ), $this->encodeToColor( $bytes[ 0 ], $bytes[ 1 ], $bytes[ 2 ], 100 ) );
+					throw new Exception( "No valid direction given for loop in " . __CLASS__ . "::" . __METHOD__ . " on line " . __LINE__ );
+				}
 			}
 		}
-
 	}
 
-	protected function saveImage() {
-		$this->image->save( $this->outFileName );
-	}
-
-	/**
-	 * Create a color based on input bytes
-	 * @param $byte1
-	 * @param $byte2
-	 * @param $byte3
-	 * @param $byte4 - not a byte, actually a nibble, 0-15
-	 * @return \Imagine\Image\Palette\Color\ColorInterface|mixed
-	 */
-	protected function encodeToColor( $byte1, $byte2, $byte3, $byte4 ) {
-		//$byte4 is in fact a nibble
-		$byte1 = hexdec( bin2hex( $byte1 ) );
-		$byte2 = hexdec( bin2hex( $byte2 ) );
-		$byte3 = hexdec( bin2hex( $byte3 ) );
-		//echo "Hex: " . $byte4 . ", Dec: " . hexdec( $byte4 ) . "\n";
-		$byte4 = 100;//50 - hexdec( $byte4 );
-		//var_dump( $byte4 );
-
-		$palette = new RGB();
-		return $palette->color( [ $byte1, $byte2, $byte3 ], $byte4 );
-	}
-
-	protected function decodeFromColor( $color ) {
-
-	}
-
-	/**
-	 * Create the stop pixel
-	 * this may not be necessary if I can find a way to determine that input has stopped on the image
-	 * @return \Imagine\Image\Palette\Color\ColorInterface
-	 */
-	protected function createStopColor() {
-		$palette = new RGB();
-		return $palette->color( [ 0, 0, 0 ], 100 );
-	}
-
-	protected function calculateXY() {
-		if ( $this->fileSize == 0 ) {
-			return;
+	protected function executeDecodeFile() {
+		if ( !file_exists( $this->storageLocation . $this->inFileName ) || !is_readable( $this->storageLocation . $this->inFileName ) ) {
+			throw new Exception( "Unable to access or read file in " . __CLASS__ . "::" . __METHOD__ . " on line " . __LINE__ );
 		}
-		//filesize+1, because if filesize/4%2==0 then there is no space for the terminator pixel
-		//TODO-determine if I could drop the terminator pixel if the value of that equation is modulo 0
-		$this->width = $this->height = ceil( sqrt( ( $this->fileSize + 1 ) / 3 ) );
+		$this->inImageHandle = new Imagine();
+		$this->outTempFile   = uniqid( "", true );
+		$this->outFileHandle = $this->openFile( $this->storageLocation . $this->outTempFile, 'w' );
+		$this->image         = $this->inImageHandle->open( $this->storageLocation . $this->inFileName );
+		$this->executePixelLoop( $this->image->getSize()->getHeight() );
+
+		$this->outFileHandle->fwrite( $this->outBuffer );
+		$this->externalBase64File( $this->outTempFile, self::DECODE_ARG );
 	}
 
-	protected function base64File(){
-		$this->inBuffer='';
+	protected function generateMasterMap() {
+		$this->masterMap = array_merge( range( 'a', 'z' ), range( 'A', 'Z' ), array_walk( range( 0, 9 ), function ( &$value ) {
+			$value = strval( $value );
+		} ) );
 	}
+
+	/**
+	 * @param $name - can contain alphanumeric chars, _, and .
+	 *
+	 * @return bool
+	 * @throws Exception
+	 */
+	protected function validateFileName( $name ): bool {
+		$match = preg_match( '/[^A-Za-z0-9_\.]+/', $name );
+		if ( $match === false ) {
+			throw new Exception( "Error processing regular expression. Input filename is '$name'" );
+		}
+		return !(bool)$match;
+	}
+
+	/**
+	 * @param        $filename
+	 * @param string $direction empty or self::DECODE_ARG
+	 *
+	 * @return string
+	 * @throws Exception
+	 */
+	protected function externalBase64File( $filename, $direction = '' ) {
+		if ( !$this->validateFileName( $filename ) ) {
+			throw new Exception( "Filename is invalid. Name is '$filename'" );
+		}
+		$inFilename = $this->storageLocation . $filename;
+		$nowrap     = '';
+		if ( $this->direction === self::ENCODE ) {
+			$outFilename = $this->storageLocation . $filename . '.64';
+			$nowrap      = "-w 0";
+		} else {
+			$outFilename = $this->storageLocation . $this->outFileName;
+		}
+		echo "base64 $nowrap $direction $inFilename > $outFilename\n";
+
+		`base64 $nowrap $direction $inFilename > $outFilename`;
+		return $outFilename;
+	}
+
+
 }
-
-/*
- * Notes:
- * If I run out of bytes mid color then I could set the alpha to something to say that it ran out of data, however;
- * in that case I'm thinking that if alpha==99(because 100=terminator bit) then if bit 1/2/3==0, ignore. That would
- * mean I could have up to two partially complete pixels.
- * This also causes an issue if the last byte is 0, because then it would be ignored.
- * In this case maybe an alpha value=98 means only consider byte1, not matter what it is
- * Could expand on this
- * if 97
- * 	byte1
- * if 98
- * 	byte1 and 2
- * if 99
- * 	all non zero bytes
- *
- * TODO-revisit this logic
- */
