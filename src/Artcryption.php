@@ -1,6 +1,10 @@
 <?php
 require_once( ".." . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php' );
-use Imagine\Gd\Imagine, Imagine\Image\Box, Imagine\Image\Palette\RGB, Imagine\Image\ImageInterface, Imagine\Image\Point;
+use Imagine\Gd\Imagine;
+use Imagine\Image\Box;
+use Imagine\Image\ImageInterface;
+use Imagine\Image\Palette\RGB;
+use Imagine\Image\Point;
 
 ini_set( 'memory_limit', -1 );
 ini_set( 'max_execution_time', -1 );
@@ -90,41 +94,6 @@ class Artcryption {
 		}
 	}
 
-	/**
-	 * @param string $fileName
-	 * @param string $mode
-	 * @param string $isBinary - should not be needed in this context
-	 *
-	 * @return SplFileObject
-	 */
-	protected function openFile( string $fileName, string $mode = 'r', $isBinary = '' ): SplFileObject {
-		return new SplFileObject( $fileName, $mode . $isBinary );
-	}
-
-	/**
-	 * Get the size of the file in the handle
-	 *
-	 * @param SplFileObject $handle
-	 *
-	 * @return int
-	 */
-	protected function getFileSize( SplFileObject $handle ): int {
-		return $handle->getSize();
-	}
-
-	/**
-	 * return the size of one side of the square
-	 *
-	 * @param int $fileSize
-	 * @param int $basis - number of data points to be used per pixel
-	 *
-	 * @return int
-	 */
-	protected function calculateSideLength( int $fileSize, int $basis = 3 ): int {
-		return ceil( sqrt( ceil( $fileSize / $basis ) ) );
-	}
-
-
 	public function executeEncodeFile( $filename ) {
 		//Final checks
 		if ( !file_exists( $this->storageLocation . $filename ) || !is_readable( $this->storageLocation . $filename ) ) {
@@ -158,6 +127,78 @@ class Artcryption {
 
 		//`cwebp -lossless -q 100 $this->storageLocation$this->outFileName -o $this->storageLocation$this->outFileName.webp`;
 		//`dwebp $this->storageLocation$this->outFileName.webp -o $this->storageLocation$this->outFileName.webp.png`;
+	}
+
+	/**
+	 * @param        $filename
+	 * @param string $direction empty or self::DECODE_ARG
+	 *
+	 * @return string
+	 * @throws Exception
+	 */
+	protected function externalBase64File( $filename, $direction = '' ) {
+		if ( !$this->validateFileName( $filename ) ) {
+			throw new Exception( "Filename is invalid. Name is '$filename'" );
+		}
+		$inFilename = $this->storageLocation . $filename;
+		$nowrap     = '';
+		if ( $this->direction === self::ENCODE ) {
+			$outFilename = $this->storageLocation . $filename . '.64';
+			$nowrap      = "-w 0";
+		} else {
+			$outFilename = $this->storageLocation . $this->outFileName;
+		}
+
+		`base64 $nowrap $direction $inFilename > $outFilename`;
+		return $outFilename;
+	}
+
+	/**
+	 * @param $name - can contain alphanumeric chars, _, and .
+	 *
+	 * @return bool
+	 * @throws Exception
+	 */
+	protected function validateFileName( $name ): bool {
+		$match = preg_match( '/[^A-Za-z0-9_\.-]+/', $name );
+		if ( $match === false ) {
+			throw new Exception( "Error processing regular expression. Input filename is '$name'" );
+		}
+		return !(bool)$match;
+	}
+
+	/**
+	 * @param string $fileName
+	 * @param string $mode
+	 * @param string $isBinary - should not be needed in this context
+	 *
+	 * @return SplFileObject
+	 */
+	protected function openFile( string $fileName, string $mode = 'r', $isBinary = '' ): SplFileObject {
+		return new SplFileObject( $fileName, $mode . $isBinary );
+	}
+
+	/**
+	 * return the size of one side of the square
+	 *
+	 * @param int $fileSize
+	 * @param int $basis - number of data points to be used per pixel
+	 *
+	 * @return int
+	 */
+	protected function calculateSideLength( int $fileSize, int $basis = 3 ): int {
+		return ceil( sqrt( ceil( $fileSize / $basis ) ) );
+	}
+
+	/**
+	 * Get the size of the file in the handle
+	 *
+	 * @param SplFileObject $handle
+	 *
+	 * @return int
+	 */
+	protected function getFileSize( SplFileObject $handle ): int {
+		return $handle->getSize();
 	}
 
 	protected function executePixelLoop( $size ) {
@@ -219,44 +260,6 @@ class Artcryption {
 		$this->masterMap = array_merge( range( 'a', 'z' ), range( 'A', 'Z' ), array_walk( range( 0, 9 ), function ( &$value ) {
 			$value = strval( $value );
 		} ) );
-	}
-
-	/**
-	 * @param $name - can contain alphanumeric chars, _, and .
-	 *
-	 * @return bool
-	 * @throws Exception
-	 */
-	protected function validateFileName( $name ): bool {
-		$match = preg_match( '/[^A-Za-z0-9_\.-]+/', $name );
-		if ( $match === false ) {
-			throw new Exception( "Error processing regular expression. Input filename is '$name'" );
-		}
-		return !(bool)$match;
-	}
-
-	/**
-	 * @param        $filename
-	 * @param string $direction empty or self::DECODE_ARG
-	 *
-	 * @return string
-	 * @throws Exception
-	 */
-	protected function externalBase64File( $filename, $direction = '' ) {
-		if ( !$this->validateFileName( $filename ) ) {
-			throw new Exception( "Filename is invalid. Name is '$filename'" );
-		}
-		$inFilename = $this->storageLocation . $filename;
-		$nowrap     = '';
-		if ( $this->direction === self::ENCODE ) {
-			$outFilename = $this->storageLocation . $filename . '.64';
-			$nowrap      = "-w 0";
-		} else {
-			$outFilename = $this->storageLocation . $this->outFileName;
-		}
-
-		`base64 $nowrap $direction $inFilename > $outFilename`;
-		return $outFilename;
 	}
 
 
