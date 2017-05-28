@@ -186,13 +186,13 @@ class Artcryption {
 					if ( $red === 0 ) {
 						return;
 					} else if ( $green === 0 ) {
-						$this->outBuffer .= chr( $red );
+						$this->outFileHandle->fwrite( chr( $red ) );
 						return;
 					} else if ( $blue === 0 ) {
-						$this->outBuffer .= chr( $red ) . chr( $green );
+						$this->outFileHandle->fwrite( chr( $red ) . chr( $green ) );
 						return;
 					} else {
-						$this->outBuffer .= chr( $red ) . chr( $green ) . chr( $blue );
+						$this->outFileHandle->fwrite( chr( $red ) . chr( $green ) . chr( $blue ) );
 					}
 				} else {
 					throw new Exception( "No valid direction given for loop in " . __CLASS__ . "::" . __METHOD__ . " on line " . __LINE__ );
@@ -210,9 +210,9 @@ class Artcryption {
 		$this->outFileHandle = $this->openFile( $this->storageLocation . $this->outTempFile, 'w' );
 		$this->image         = $this->inImageHandle->open( $this->storageLocation . $this->inFileName );
 		$this->executePixelLoop( $this->image->getSize()->getHeight() );
-
-		$this->outFileHandle->fwrite( $this->outBuffer );
+		$this->outFileHandle = null;
 		$this->externalBase64File( $this->outTempFile, self::DECODE_ARG );
+		unlink( $this->storageLocation . $this->outTempFile );
 	}
 
 	protected function generateMasterMap() {
@@ -254,7 +254,6 @@ class Artcryption {
 		} else {
 			$outFilename = $this->storageLocation . $this->outFileName;
 		}
-		echo "base64 $nowrap $direction $inFilename > $outFilename\n";
 
 		`base64 $nowrap $direction $inFilename > $outFilename`;
 		return $outFilename;
