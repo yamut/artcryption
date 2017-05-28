@@ -21,6 +21,12 @@ OUTFILE1_SIZE=$(ls -l storage/${OUTFILE1} | awk '{print $5}')
 INFILE2_SIZE=$(ls -l storage/${INFILE2} | awk '{print $5}')
 OUTFILE2_SIZE=$(ls -l storage/${OUTFILE2} | awk '{print $5}')
 
+# Uncomment these to test these tests
+# echo "In file 1 size: ${INFILE1_SIZE}"
+# echo "In file 2 size: ${INFILE2_SIZE}"
+# echo "Out file 1 size: ${OUTFILE1_SIZE}"
+# echo "Out file 2 size: ${OUTFILE2_SIZE}"
+
 if [[ "$INFILE1_SIZE" == "$OUTFILE1_SIZE" ]]
 then
     echo -e "Test 1 - filesize: ${PASS}"
