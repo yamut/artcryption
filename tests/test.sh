@@ -23,15 +23,30 @@ OUTFILE2_SIZE=$(ls -l storage/${OUTFILE2} | awk '{print $5}')
 
 if [[ "$INFILE1_SIZE" == "$OUTFILE1_SIZE" ]]
 then
-    echo -e "Test 1: ${PASS}"
+    echo -e "Test 1 - filesize: ${PASS}"
 else
-    echo -e "Test 2: ${FAIL}"
+    echo -e "Test 1 - filesize: ${FAIL}"
 fi
 
 if [[ "$INFILE2_SIZE" == "$OUTFILE2_SIZE" ]]
 then
-    echo -e "Test 2: ${PASS}"
+    echo -e "Test 2 - filesize: ${PASS}"
 else
-    echo -e "Test 2: ${FAIL}"
+    echo -e "Test 2 - filesize: ${FAIL}"
 fi
+
+if [[ $(diff <(xxd storage/${INFILE2}) <(xxd storage/${OUTFILE2})) ]]
+then
+    echo -e "Test 2 - binary difference: ${FAIL}"
+else
+    echo -e "Test 2 - binary difference: ${PASS}"
+fi
+
+if [[ $(diff <(xxd storage/${INFILE1}) <(xxd storage/${OUTFILE1})) ]]
+then
+    echo -e "Test 1 - binary difference: ${FAIL}"
+else
+    echo -e "Test 1 - binary difference: ${PASS}"
+fi
+
 echo "TESTS COMPLETE"
