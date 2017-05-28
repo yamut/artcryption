@@ -2,6 +2,9 @@
 require_once( ".." . DIRECTORY_SEPARATOR . 'vendor' . DIRECTORY_SEPARATOR . 'autoload.php' );
 use Imagine\Gd\Imagine, Imagine\Image\Box, Imagine\Image\Palette\RGB, Imagine\Image\ImageInterface, Imagine\Image\Point;
 
+ini_set( 'memory_limit', -1 );
+ini_set( 'max_execution_time', -1 );
+
 class Artcryption {
 
 	const DECODE = 0;
@@ -225,7 +228,7 @@ class Artcryption {
 	 * @throws Exception
 	 */
 	protected function validateFileName( $name ): bool {
-		$match = preg_match( '/[^A-Za-z0-9_\.]+/', $name );
+		$match = preg_match( '/[^A-Za-z0-9_\.-]+/', $name );
 		if ( $match === false ) {
 			throw new Exception( "Error processing regular expression. Input filename is '$name'" );
 		}
@@ -259,3 +262,9 @@ class Artcryption {
 
 
 }
+/**
+ * As execpted large files are a huge failure.
+ * @TODO: improve large file processing. Initial thoughts, chunk images? Would need sequencing to work
+ * @TODO: look into using the bare php api instead of imagine, could save the conversion step to get to 24bit?
+ *
+ */
