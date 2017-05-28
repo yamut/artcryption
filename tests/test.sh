@@ -21,14 +21,14 @@ OUTFILE1_SIZE=$(ls -l storage/${OUTFILE1} | awk '{print $5}')
 INFILE2_SIZE=$(ls -l storage/${INFILE2} | awk '{print $5}')
 OUTFILE2_SIZE=$(ls -l storage/${OUTFILE2} | awk '{print $5}')
 
-if [ "$INFILE1_SIZE" == "$OUTFILE1_SIZE" ]
+if [[ "$INFILE1_SIZE" == "$OUTFILE1_SIZE" ]]
 then
     echo -e "Test 1: ${PASS}"
 else
     echo -e "Test 2: ${FAIL}"
 fi
 
-if [ "$INFILE2_SIZE" == "$OUTFILE2_SIZE" ]
+if [[ "$INFILE2_SIZE" == "$OUTFILE2_SIZE" ]]
 then
     echo -e "Test 2: ${PASS}"
 else
